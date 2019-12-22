@@ -2,47 +2,70 @@ import logging
 import select
 import socket
 import struct
+import hashlib
+import string
+import random
 from socketserver import ThreadingMixIn, TCPServer, StreamRequestHandler
+
+from Crypto import Random
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5 as Cipher_pkcs1_v1_5
+
+from Crypto.Cipher import AES
+
+import MyCryptor
 
 logging.basicConfig(level=logging.DEBUG)
 SOCKS_VERSION = 5
 
+license = b"1357753124688642"
+
+def aesKeyGenerator(length):
+    if length != 32:
+        return None
+    x = string.ascii_letters+string.digits
+    return ''.join([random.choice(x) for i in range(length)])
 
 class ThreadingTCPServer(ThreadingMixIn, TCPServer):
     pass
 
 
 class SocksProxy(StreamRequestHandler):
-    username = 'username'
-    password = 'password'
-
+    
     def handle(self):
         logging.info('Accepting connection from %s:%s' % self.client_address)
 
-        # greeting header
-        # read and unpack 2 bytes from a client
-        header = self.connection.recv(2)
-        version, nmethods = struct.unpack("!BB", header)
-
-        # socks 5
-        assert version == SOCKS_VERSION
-        assert nmethods > 0
-
-        # get available methods
-        methods = self.get_available_methods(nmethods)
-
-        # accept only USERNAME/PASSWORD auth
-        if 2 not in set(methods):
-            # close connection
-            self.server.close_request(self.request)
-            return
-
-        # send welcome message
-        self.connection.sendall(struct.pack("!BB", SOCKS_VERSION, 2))
-
-        if not self.verify_credentials():
-            return
-
+        state = 0
+        publicKey = None
+        aesKey = None
+        aesCryptor = None
+        if state==0:
+            stringBuffer = b""
+            while True:
+                newData = self.connection.recv(1024)
+                if len(newData) > 0:
+                    stringBuffer = stringBuffer + newData
+                    logging.info("rsa stringbuffer : " + str(stringBuffer))
+                    if len(stringBuffer) >= 303:
+                        digest = hashlib.sha256(stringBuffer[:271]+license).digest()
+                        digest_ = stringBuffer[271:]
+                        if not digest == digest_:
+                            raise ValueError("Digest not match")
+                        publicKey = RSA.importKey(stringBuffer[:271])
+                        state = 1
+                        break
+                else:
+                    break
+            logging.info("public_rsa_key : " + str(publicKey))
+                
+        if state==1:
+            aesKey = aesKeyGenerator(32)
+            logging.info("aesKey: " + str(aesKey))
+            aesCryptor = MyCryptor.MyCryptor(aesKey, AES.MODE_CFB, license)
+            rsaCryptor = Cipher_pkcs1_v1_5.new(publicKey)
+            cipherText = rsaCryptor.encrypt(aesKey.encode(encoding="utf-8"))
+            self.connection.sendall(cipherText)
+        
         # request
         version, cmd, _, address_type = struct.unpack("!BBBB", self.connection.recv(4))
         assert version == SOCKS_VERSION
@@ -83,34 +106,6 @@ class SocksProxy(StreamRequestHandler):
 
         self.server.close_request(self.request)
 
-    def get_available_methods(self, n):
-        methods = []
-        for i in range(n):
-            methods.append(ord(self.connection.recv(1)))
-        return methods
-
-    def verify_credentials(self):
-        version = ord(self.connection.recv(1))
-        assert version == 1
-
-        username_len = ord(self.connection.recv(1))
-        username = self.connection.recv(username_len).decode('utf-8')
-
-        password_len = ord(self.connection.recv(1))
-        password = self.connection.recv(password_len).decode('utf-8')
-
-        if username == self.username and password == self.password:
-            # success, status = 0
-            response = struct.pack("!BB", version, 0)
-            self.connection.sendall(response)
-            return True
-
-        # failure, status != 0
-        response = struct.pack("!BB", version, 0xFF)
-        self.connection.sendall(response)
-        self.server.close_request(self.request)
-        return False
-
     def generate_failed_reply(self, address_type, error_number):
         return struct.pack("!BBBBIH", SOCKS_VERSION, error_number, 0, address_type, 0, 0)
 
@@ -133,5 +128,5 @@ class SocksProxy(StreamRequestHandler):
 
 
 if __name__ == '__main__':
-    with ThreadingTCPServer(('127.0.0.1', 9011), SocksProxy) as server:
+    with ThreadingTCPServer(('127.0.0.1', 1234), SocksProxy) as server:
         server.serve_forever()
