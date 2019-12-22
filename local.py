@@ -68,8 +68,8 @@ class SocksProxy(StreamRequestHandler):
             address = socket.inet_ntoa(ipv4_addr)
         elif address_type == 3:  # Domain name
             recv_domain_len = self.connection.recv(1)[0]
-            stringBuffer += recv_domain_len
-            domain_length = ord(recv_domain_len)
+            stringBuffer += recv_domain_len.to_bytes(1, "little")
+            domain_length = recv_domain_len
             recv_domain_addr = self.connection.recv(domain_length)
             stringBuffer += recv_domain_addr
             address = recv_domain_addr
@@ -114,6 +114,7 @@ class SocksProxy(StreamRequestHandler):
                     remote.close()
                     exit(0)
             logging.info("aesKey: " + str(aesKey))
+            print(stringBuffer)
             remote.sendall(stringBuffer)
         except Exception as err:
             logging.error("this error!")
@@ -173,7 +174,7 @@ class SocksProxy(StreamRequestHandler):
                 assert len(toEncrypt) == 256
                 data = aesCryptor.encrypt(toEncrypt)
                 logging.info("from client , data : " + str(len(data)))
-                if remote.send(data) <= 0:
+                if remote.send(data) < 0:
                     break
 
             if remote in r:
@@ -187,7 +188,7 @@ class SocksProxy(StreamRequestHandler):
                 length = int(data[0])
                 data = data[1:length + 1]
                 logging.info("response from proxy : " + str(len(data)))
-                if client.send(data) <= 0:
+                if client.send(data) < 0:
                     break
 
 

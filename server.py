@@ -72,7 +72,7 @@ class SocksProxy(StreamRequestHandler):
         if address_type == 1:  # IPv4
             address = socket.inet_ntoa(self.connection.recv(4))
         elif address_type == 3:  # Domain name
-            domain_length = ord(self.connection.recv(1)[0])
+            domain_length = self.connection.recv(1)[0]
             address = self.connection.recv(domain_length)
 
         port = struct.unpack('!H', self.connection.recv(2))[0]
@@ -81,7 +81,9 @@ class SocksProxy(StreamRequestHandler):
         try:
             if cmd == 1:  # CONNECT
                 remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                logging.info(address)
                 remote.connect((address, port))
+                logging.info("heiheihei")
                 bind_address = remote.getsockname()
                 logging.info('Connected to %s %s' % (address, port))
             else:
@@ -136,7 +138,7 @@ class SocksProxy(StreamRequestHandler):
                 data = aesCryptor.decrypt(newData)
                 length = int(data[0])
                 data = data[1:length+1]
-                if remote.send(data) <= 0:
+                if remote.send(data) < 0:
                     break
 
             if remote in r:
@@ -147,7 +149,7 @@ class SocksProxy(StreamRequestHandler):
                 toEncrypt = length.to_bytes(1,"little") + newData
                 data = aesCryptor.encrypt(toEncrypt)
                 assert len(data) == 256
-                if client.send(data) <= 0:
+                if client.send(data) < 0:
                     break
 
 
