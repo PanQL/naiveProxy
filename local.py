@@ -121,7 +121,7 @@ class SocksProxy(StreamRequestHandler):
             self.connection.close()
             return
         
-        self.exchange_loop(self.connection, remote)
+        self.exchange_loop(self.connection, remote, aesKey)
         self.server.close_request(self.request)
 
     def get_available_methods(self, n):
@@ -155,7 +155,9 @@ class SocksProxy(StreamRequestHandler):
     def generate_failed_reply(self, address_type, error_number):
         return struct.pack("!BBBBIH", SOCKS_VERSION, error_number, 0, address_type, 0, 0)
 
-    def exchange_loop(self, client, remote):
+    def exchange_loop(self, client, remote, aesKey):
+
+        aesCryptor = MyCryptor.MyCryptor(aesKey, AES.MODE_CFB, license)
 
         while True:
 
@@ -163,12 +165,28 @@ class SocksProxy(StreamRequestHandler):
             r, w, e = select.select([client, remote], [], [])
 
             if client in r:
-                data = client.recv(4096)
+                newData = client.recv(255)
+                length = len(newData)
+                while len(newData) < 255:
+                    newData += b'0'
+                toEncrypt = length.to_bytes(1, "little") + newData
+                assert len(toEncrypt) == 256
+                data = aesCryptor.encrypt(toEncrypt)
+                logging.info("from client , data : " + str(len(data)))
                 if remote.send(data) <= 0:
                     break
 
             if remote in r:
-                data = remote.recv(4096)
+                newData = remote.recv(256)
+                logging.info("len newData " + str(len(newData)))
+                while len(newData) < 256:
+                    # logging.info("len newData " + str(len(newData)))
+                    newData += remote.recv(256 - len(newData))
+                assert len(newData) == 256
+                data = aesCryptor.decrypt(newData)
+                length = int(data[0])
+                data = data[1:length + 1]
+                logging.info("response from proxy : " + str(len(data)))
                 if client.send(data) <= 0:
                     break
 

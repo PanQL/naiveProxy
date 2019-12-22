@@ -38,7 +38,6 @@ class SocksProxy(StreamRequestHandler):
         state = 0
         publicKey = None
         aesKey = None
-        aesCryptor = None
         if state==0:
             stringBuffer = b""
             while True:
@@ -98,18 +97,29 @@ class SocksProxy(StreamRequestHandler):
             # return connection refused error
             reply = self.generate_failed_reply(address_type, 5)
 
+        assert len(reply) <= 255
+        length = len(reply)
+        while len(reply) < 255:
+            reply += b'0'
+        reply = length.to_bytes(1, "little") + reply
+        logging.info("len(reply) : " + str(len(reply)))
+        assert len(reply) == 256
+        reply = aesCryptor.encrypt(reply)
         self.connection.sendall(reply)
 
         # establish data exchange
-        if reply[1] == 0 and cmd == 1:
-            self.exchange_loop(self.connection, remote)
+        # if reply[1] == 0 and cmd == 1:
+        logging.info("exchange_loop now")
+        self.exchange_loop(self.connection, remote, aesKey)
 
         self.server.close_request(self.request)
 
     def generate_failed_reply(self, address_type, error_number):
         return struct.pack("!BBBBIH", SOCKS_VERSION, error_number, 0, address_type, 0, 0)
 
-    def exchange_loop(self, client, remote):
+    def exchange_loop(self, client, remote, aesKey):
+
+        aesCryptor = MyCryptor.MyCryptor(aesKey, AES.MODE_CFB, license)
 
         while True:
 
@@ -117,12 +127,26 @@ class SocksProxy(StreamRequestHandler):
             r, w, e = select.select([client, remote], [], [])
 
             if client in r:
-                data = client.recv(4096)
+                newData = client.recv(256)
+                logging.info("len newData " + str(len(newData)))
+                while len(newData) < 256:
+                    logging.info("len newData " + str(len(newData)))
+                    newData += client.recv(256 - len(newData))
+                assert len(newData) == 256
+                data = aesCryptor.decrypt(newData)
+                length = int(data[0])
+                data = data[1:length+1]
                 if remote.send(data) <= 0:
                     break
 
             if remote in r:
-                data = remote.recv(4096)
+                newData = remote.recv(255)
+                length = len(newData)
+                while len(newData) < 255:
+                    newData += b'0'
+                toEncrypt = length.to_bytes(1,"little") + newData
+                data = aesCryptor.encrypt(toEncrypt)
+                assert len(data) == 256
                 if client.send(data) <= 0:
                     break
 
