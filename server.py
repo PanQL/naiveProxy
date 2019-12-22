@@ -31,7 +31,7 @@ class ThreadingTCPServer(ThreadingMixIn, TCPServer):
 
 
 class SocksProxy(StreamRequestHandler):
-    
+
     def handle(self):
         logging.info('Accepting connection from %s:%s' % self.client_address)
 
@@ -56,7 +56,7 @@ class SocksProxy(StreamRequestHandler):
                 else:
                     break
             logging.info("public_rsa_key : " + str(publicKey))
-                
+
         if state==1:
             aesKey = aesKeyGenerator(32)
             logging.info("aesKey: " + str(aesKey))
@@ -64,7 +64,7 @@ class SocksProxy(StreamRequestHandler):
             rsaCryptor = Cipher_pkcs1_v1_5.new(publicKey)
             cipherText = rsaCryptor.encrypt(aesKey.encode(encoding="utf-8"))
             self.connection.sendall(cipherText)
-        
+
         # request
         version, cmd, _, address_type = struct.unpack("!BBBB", self.connection.recv(4))
         assert version == SOCKS_VERSION
@@ -91,7 +91,9 @@ class SocksProxy(StreamRequestHandler):
 
             addr = struct.unpack("!I", socket.inet_aton(bind_address[0]))[0]
             port = bind_address[1]
-            reply = struct.pack("!BBBBIH", SOCKS_VERSION, 0, 0, address_type,
+            #reply = struct.pack("!BBBBIH", SOCKS_VERSION, 0, 0, address_type,
+                                #addr, port)
+            reply = struct.pack("!BBBBIH", SOCKS_VERSION, 0, 0, 1,
                                 addr, port)
 
         except Exception as err:
