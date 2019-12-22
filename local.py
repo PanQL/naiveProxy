@@ -43,16 +43,16 @@ class SocksProxy(StreamRequestHandler):
         methods = self.get_available_methods(nmethods)
 
         # accept only USERNAME/PASSWORD auth
-        if 2 not in set(methods):
+        # if 2 not in set(methods):
             # close connection
-            self.server.close_request(self.request)
-            return
+         #    self.server.close_request(self.request)
+          #   return
 
         # send welcome message
-        self.connection.sendall(struct.pack("!BB", SOCKS_VERSION, 2))
+        self.connection.sendall(struct.pack("!BB", SOCKS_VERSION, 0))
 
-        if not self.verify_credentials():
-            return
+        # if not self.verify_credentials():
+         #    return
 
         # request
         stringBuffer = self.connection.recv(4)
